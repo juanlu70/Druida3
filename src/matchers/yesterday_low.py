@@ -12,19 +12,19 @@ utils = druida_utils.DruidaUtils()
 data = druida_data.DruidaData()
 
 
-class YesterdayBeforeHigh:
+class YesterdayLow:
     def __init__(self):
-        self.name = "yesterday_before_high"
-        self.class_name = "YesterdayBeforeHigh"
-        self.table = "match_before_high"
-        self.field = "high"
+        self.name = "yesterday_low"
+        self.class_name = "YesterdayLow"
+        self.table = "match_low"
+        self.field = "low"
         self.arguments = dict()
         self.current_date = None
         self.BASE_VALUE = None
         self.last_value = None
         self.today_seconds = None
-        self.diff_field = "bfhigh_diff"
-        self.pct_diff_field = "bfhigh_pct_diff"
+        self.diff_field = "low_diff"
+        self.pct_diff_field = "low_pct_diff"
         self.diff_value = None
         self.pctdiff_value = None
         self.value_name = None
@@ -52,13 +52,13 @@ class YesterdayBeforeHigh:
             if self.BASE_VALUE is not None:
                 return
 
-        base_value_date = utils.calculate_dates(self.arguments['date'], -2)[0]
+        base_value_date = utils.calculate_dates(self.arguments['date'], -1)[0]
         db.get_bolsa_database(base_value_date)
         secs_ini = str(utils.get_timestamp(base_value_date + " 00:00:00"))
         secs_end = str(utils.get_timestamp(base_value_date + " 23:59:59"))
 
         params = [
-            "SELECT MAX(high)",
+            "SELECT MIN(low)",
             "ticker='" + self.arguments['ticker'] + "'",
             "secs>=" + secs_ini,
             "secs<=" + secs_end
@@ -66,7 +66,7 @@ class YesterdayBeforeHigh:
         db_data = db.select(params)
 
         try:
-            self.last_value = db_data[0]['MAX(high)']
+            self.last_value = db_data[0]['MIN(low)']
         except IndexError:
             print(self.class_name + " Error getting base value!")
             exit()
@@ -94,35 +94,42 @@ class YesterdayBeforeHigh:
 
         return
 
-    def get_matches(self, row: dict, sender: mp.Pipe) -> list:
+    def get_matches(self, task_queue: mp.Queue, result_queue: mp.Queue) -> None:
         self.matches = list()
-        self.update_base_value()
-        self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        self.get_diff_formula(row)
-        self.get_pct_diff_formula(row)
+        while True:
+            self.update_base_value()
 
-        data.set_matches_values({
-            'today_seconds': self.today_seconds,
-            'arguments': self.arguments,
-            'diff_field': self.diff_field,
-            'pct_diff_field': self.pct_diff_field,
-            'table': self.table,
-            'class_name': self.class_name
-        })
+            print("GETTING YESTERDAY_LOW MATCHES...")
+            row = task_queue.get()
+            print("ROW YL: "+str(row), flush=True)
+            self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        diff_matchs = data.make_diff_query(self.diff_value)
-        self.value_name = "bf.high diff"
-        self.show_matchs(diff_matchs)
-        self.matches.extend(diff_matchs)
+            self.get_diff_formula(row)
+            self.get_pct_diff_formula(row)
 
-        pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
-        self.value_name = "bf.high pctdiff"
-        self.show_matchs(pct_diff_matchs)
-        self.matches.extend(pct_diff_matchs)
-        sender.send(self.matches)
+            data.set_matches_values({
+                'today_seconds': self.today_seconds,
+                'arguments': self.arguments,
+                'diff_field': self.diff_field,
+                'pct_diff_field': self.pct_diff_field,
+                'table': self.table,
+                'class_name': self.class_name
+            })
 
-        return self.matches
+            diff_matchs = data.make_diff_query(self.diff_value)
+            self.value_name = "yesterday_low diff"
+            self.show_matchs(diff_matchs)
+            self.matches.extend(diff_matchs)
+
+            pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
+            self.value_name = "yesterday_low pctdiff"
+            self.show_matchs(pct_diff_matchs)
+            self.matches.extend(pct_diff_matchs)
+
+            result_queue.put(self.matches)
+
+            time.sleep(0.1)
 
     def show_matchs(self, matchs: list) -> None:
         if matchs is not None:
@@ -136,7 +143,10 @@ class YesterdayBeforeHigh:
     def make_training(self, row_data: list) -> None:
         match_list = list()
         self.arguments['date'] = str(row_data[0]['fecha'])
-
+        self.maxtrend = row_data[0]['close']
+        self.mintrend = row_data[0]['close']
+        self.old_daymax = self.maxtrend
+        self.old_daymin = self.mintrend
         data.set_matches_values({
             'today_seconds': 0,
             'arguments': self.arguments,
@@ -145,11 +155,6 @@ class YesterdayBeforeHigh:
             'table': self.table,
             'class_name': self.class_name
         })
-
-        self.maxtrend = row_data[0]['close']
-        self.mintrend = row_data[0]['close']
-        self.old_daymax = self.maxtrend
-        self.old_daymin = self.mintrend
 
         self.force_base_value = 1
         self.update_base_value()

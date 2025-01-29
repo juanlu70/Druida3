@@ -35,7 +35,7 @@ class DruidaProcess:
         for matcher in self.matchers:
             matcher_class_name = self.get_class_name_from_matcher(matcher)
 
-            module = importlib.import_module(matcher)
+            module = importlib.import_module(f"matchers.{matcher}")
             matcher_class = getattr(module, matcher_class_name)
             self.matcher_objects.append(matcher_class())
 

@@ -12,19 +12,19 @@ utils = druida_utils.DruidaUtils()
 data = druida_data.DruidaData()
 
 
-class YesterdayOpen:
+class YesterdayClose:
     def __init__(self):
-        self.name = "yesterday_open"
-        self.class_name = "YesterdayOpen"
-        self.table = "match_open"
-        self.field = "open"
+        self.name = "yesterday_close"
+        self.class_name = "YesterdayClose"
+        self.table = "match_close"
+        self.field = "close"
         self.arguments = dict()
         self.current_date = None
         self.BASE_VALUE = None
         self.last_value = None
         self.today_seconds = None
-        self.diff_field = "open_diff"
-        self.pct_diff_field = "open_pct_diff"
+        self.diff_field = "close_diff"
+        self.pct_diff_field = "close_pct_diff"
         self.diff_value = None
         self.pctdiff_value = None
         self.value_name = None
@@ -58,11 +58,11 @@ class YesterdayOpen:
         secs_end = str(utils.get_timestamp(base_value_date + " 23:59:59"))
 
         params = [
-            "SELECT open",
+            "SELECT close",
             "ticker='" + self.arguments['ticker'] + "'",
             "secs>=" + secs_ini,
             "secs<=" + secs_end,
-            "ORDER BY secs",
+            "ORDER BY secs DESC",
             "LIMIT 1 OFFSET 0"
         ]
         db_data = db.select(params)
@@ -96,35 +96,42 @@ class YesterdayOpen:
 
         return
 
-    def get_matches(self, row: dict, sender: mp.Pipe) -> list:
+    def get_matches(self, task_queue: mp.Queue, result_queue: mp.Queue) -> None:
         self.matches = list()
-        self.update_base_value()
-        self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        self.get_diff_formula(row)
-        self.get_pct_diff_formula(row)
+        while True:
+            self.update_base_value()
 
-        data.set_matches_values({
-            'today_seconds': self.today_seconds,
-            'arguments': self.arguments,
-            'diff_field': self.diff_field,
-            'pct_diff_field': self.pct_diff_field,
-            'table': self.table,
-            'class_name': self.class_name
-        })
+            print("GETTING YESTERDAY_CLOSE MATCHES...")
+            row = task_queue.get()
+            print("ROW YC: "+str(row), flush=True)
+            self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        diff_matchs = data.make_diff_query(self.diff_value)
-        self.value_name = "open diff"
-        self.show_matchs(diff_matchs)
-        self.matches.extend(diff_matchs)
+            self.get_diff_formula(row)
+            self.get_pct_diff_formula(row)
 
-        pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
-        self.value_name = "open pctdiff"
-        self.show_matchs(pct_diff_matchs)
-        self.matches.extend(pct_diff_matchs)
-        sender.send(self.matches)
+            data.set_matches_values({
+                'today_seconds': self.today_seconds,
+                'arguments': self.arguments,
+                'diff_field': self.diff_field,
+                'pct_diff_field': self.pct_diff_field,
+                'table': self.table,
+                'class_name': self.class_name
+            })
 
-        return self.matches
+            diff_matchs = data.make_diff_query(self.diff_value)
+            self.value_name = "yesterday_close diff"
+            self.show_matchs(diff_matchs)
+            self.matches.extend(diff_matchs)
+
+            pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
+            self.value_name = "yesterday_close pctdiff"
+            self.show_matchs(pct_diff_matchs)
+            self.matches.extend(pct_diff_matchs)
+
+            result_queue.put(self.matches)
+
+            time.sleep(0.1)
 
     def show_matchs(self, matchs: list) -> None:
         if matchs is not None:

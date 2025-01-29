@@ -31,6 +31,9 @@ class DruidaBase:
         self.close = None
         self.fecha = None
         self.hora = None
+        self.mpprocess = list()
+        self.result_queue = None
+        self.task_queues = list()
 
         return
 
@@ -67,6 +70,7 @@ class DruidaBase:
         self.matcher_objects = prcs.get_matcher_objects()
 
         self.data = data.get_old_day_data()
+        self.start_matchers_process()
         self.get_matches()
 
         return
@@ -81,8 +85,48 @@ class DruidaBase:
 
         return
 
+    def start_matchers_process(self) -> None:
+        self.result_queue = mp.Queue()
+        self.task_queues = list()
+
+        for item, process in enumerate(self.matcher_objects):
+            task_queue = mp.Queue()
+            process.set_arguments(self.arguments)
+            p = mp.Process(target=process.get_matches, args=(task_queue, self.result_queue))
+            self.mpprocess.append(p)
+            self.task_queues.append(task_queue)
+            p.start()
+
+        self.start_classifier_process()
+
+        return
+
+    def start_classifier_process(self) -> None:
+        # task_queue = mp.Queue()
+        # clsfy.set_arguments(self.arguments)
+        #
+        # p = mp.Process(target=clsfy.add_levels, args=(task_queue, self.result_queue))
+        # self.mpprocess.append(p)
+        # self.task_queues.append(task_queue)
+        # p.start()
+        # clsfy.set_process_number(len(self.mpprocess))
+
+        # p = mp.Process(target=clsfy.process_burn_levels, args=(task_queue, self.result_queue))
+        # self.mpprocess.append(p)
+        # self.task_queues.append(task_queue)
+        # p.start()
+        # clsfy.set_process_number(len(self.mpprocess))
+        #
+        # p = mp.Process(target=clsfy.get_pairs, args=(task_queue, self.result_queue))
+        # self.mpprocess.append(p)
+        # self.task_queues.append(task_queue)
+        # task_queue.put(self.data)
+        # p.start()
+        # clsfy.set_process_number(len(self.mpprocess))
+
+        return
+
     def get_matches(self) -> None:
-        jobs = list()
         clsfy.set_arguments(self.arguments)
 
         for row in self.data:
@@ -93,33 +137,28 @@ class DruidaBase:
             self.fecha = row['fecha']
             self.hora = row['hora']
             self.matches = list()
-            receiver, sender = mp.Pipe()
 
-            for process in self.matcher_objects:
-                process.set_arguments(self.arguments)
+            for item, process in enumerate(self.matcher_objects):
+                self.task_queues[item].put(self.row)
 
-                p = mp.Process(target=process.get_matches, args=[self.row, sender])
-                jobs.append(p)
-                p.start()
-                time.sleep(0.1)
-
-            for job in jobs:
-                job.join(timeout=None)
-                while job.is_alive():
-                    time.sleep(0.1)
-
-            for job in jobs:
-                self.matches.extend(receiver.recv())
+            for _ in self.mpprocess:
+                response = self.result_queue.get()
+                self.matches.extend(response)
             self.sum_matches += len(self.matches)
+            print("---------------------------------------------")
+            print(f"TOTAL MATCHES: {self.sum_matches}")
+
+            print("BEGIN CLASSIFY!")
 
             clsfy.set_close(self.row['close'])
             clsfy.set_old_close(self.old_close)
             clsfy.set_seconds((self.row['secs']))
             clsfy.make_classifier(self.matches)
+            # self.task_queues[clsfy.processes_numbers[-1]].put(self.matches)
+
+            print("END CLASSIFY!")
 
             self.show_levels(self.row)
-
-            jobs = list()
 
             self.old_close = self.row['close']
             self.old_fecha = str(self.row['fecha'])

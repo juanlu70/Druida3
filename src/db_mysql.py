@@ -42,13 +42,13 @@ class DbMysql:
 
     def query(self, query: str) -> tuple:
         results = tuple()
-        func_name = getattr(srv, "db_" + self.database)
+        func_name = getattr(srv, f"db_{self.database}")
         self.current_db = self.database
 
         if self.debug_mode > 1:
             self.show_query(query)
 
-        self.sql = func_name()
+        [self.sql, self.bbdd] = func_name()
         try:
             self.sql.execute(query)
             results = self.sql.fetchall()
@@ -56,12 +56,12 @@ class DbMysql:
             print(e)
             self.error_query(query)
 
-        srv.bbdd.close()
+        self.bbdd.close()
 
         return results
 
     def error_query(self, query: str) -> None:
-        line = "(" + self.current_db + " ERROR) " + query
+        line = f"({self.current_db}) ERROR) {query}"
         logging.info(line)
         print(line)
 
@@ -69,35 +69,35 @@ class DbMysql:
 
     def insdelupd(self, query: str) -> None:
         self.current_db = self.database
-        func_name = getattr(srv, "db_" + self.database)
 
         if self.debug_mode > 1:
             self.show_query(query)
 
-        self.sql = func_name()
+        func_name = getattr(srv, f"db_{self.database}")
+        [self.sql, self.bbdd] = func_name()
         try:
             self.sql.execute(query)
-            srv.bbdd.commit()
+            self.bbdd.commit()
         except pymysql.err.ProgrammingError:
             self.error_query(query)
 
-        srv.bbdd.close()
+        self.bbdd.close()
 
         return
 
     def show_query(self, query_text: str) -> None:
-        line = ("(" + self.database + ") " + query_text)
+        line = f"({self.database}) {query_text}"
         logging.info(line)
         print(line)
 
         return
 
     def select(self, query_list: list) -> list:
-        full_query = "SELECT * FROM " + self.table + " WHERE "
+        full_query = f"SELECT * FROM {self.table} WHERE "
 
         for query in query_list:
             if query.upper().find("SELECT") == 0:
-                full_query = query + " FROM " + self.table + " WHERE "
+                full_query = query + f" FROM {self.table} WHERE "
 
             if query.find("SELECT") < 0 \
                     and query.find("GROUP BY ") < 0 \
@@ -126,7 +126,7 @@ class DbMysql:
         return list(results)
 
     def insert(self, query_dict: dict) -> None:
-        final_query = "INSERT INTO "+self.table+" ("
+        final_query = f"INSERT INTO {self.table} ("
 
         for query in query_dict.keys():
             if query != "id":
@@ -150,9 +150,9 @@ class DbMysql:
         self.current_db = self.database
         func_name = getattr(srv, "db_" + self.database)
 
-        self.sql = func_name()
+        [self.sql, self.bbdd] = func_name()
         for row in row_list:
-            final_query = "INSERT INTO " + self.table + " ("
+            final_query = f"INSERT INTO {self.table} ("
 
             for n in row.keys():
                 if n != "id":
@@ -163,7 +163,7 @@ class DbMysql:
 
             for n in row.keys():
                 if n != "id":
-                    final_query += "'" + str(row[n]) + "',"
+                    final_query += f"'{str(row[n])}',"
 
             final_query = final_query[0:-1]
             final_query += ");"
@@ -177,8 +177,8 @@ class DbMysql:
 
             time.sleep(0.0001)
 
-        srv.bbdd.commit()
-        srv.bbdd.close()
+        self.bbdd.commit()
+        self.bbdd.close()
 
         return
 

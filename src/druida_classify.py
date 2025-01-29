@@ -12,6 +12,7 @@ db = db_mysql.DbMysql()
 class DruidaClassify:
     def __init__(self):
         self.arguments = None
+        self.processes_numbers = list()
         self.close = None
         self.old_close = None
         self.seconds = None
@@ -44,6 +45,11 @@ class DruidaClassify:
 
         return
 
+    def set_process_number(self, process_num: int) -> None:
+        self.processes_numbers.append(process_num)
+
+        return
+
     def make_classifier(self, matchs: list) -> None:
         jobs = list()
 
@@ -63,6 +69,32 @@ class DruidaClassify:
                 time.sleep(0.1)
 
         return
+
+    # def add_levels(self, task_queue: mp.Queue, result_queue: mp.Queue) -> None:
+    #     data.set_arguments(self.arguments)
+    #     print("ADDING LEVELS...")
+    #
+    #     matchs = task_queue.get()
+    #
+    #     while True:
+    #         if len(matchs) > 0:
+    #             for match in matchs:
+    #                 self.level_up = self.close + match['maxtrend']
+    #                 self.level_dn = self.close + match['mintrend']
+    #                 new_level = {
+    #                     'ticker': self.arguments['ticker'],
+    #                     'fecha': self.arguments['date'],
+    #                     'highlow': 1,
+    #                     'level': self.level_up,
+    #                     'num': 1,
+    #                     'secs': self.seconds,
+    #                     'burned': 0
+    #                 }
+    #
+    #                 self.modify_add_level_high(new_level)
+    #                 self.modify_add_level_low(new_level)
+    #
+    #         time.sleep(0.1)
 
     def add_levels(self, matchs: list) -> None:
         data.set_arguments(self.arguments)

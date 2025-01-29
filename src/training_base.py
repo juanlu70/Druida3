@@ -52,7 +52,7 @@ class TrainingBase:
             for process in self.matcher_objects:
                 process.set_arguments(self.arguments)
 
-                print("---> PROCESSING DATE: " + date + " for " + process.class_name)
+                print(f"---> PROCESSING DATE: {date} for {process.class_name}")
 
                 p = mp.Process(target=process.make_training, args=[day_data])
                 jobs.append(p)

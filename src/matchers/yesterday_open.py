@@ -12,19 +12,19 @@ utils = druida_utils.DruidaUtils()
 data = druida_data.DruidaData()
 
 
-class YesterdayLow:
+class YesterdayOpen:
     def __init__(self):
-        self.name = "yesterday_low"
-        self.class_name = "YesterdayLow"
-        self.table = "match_low"
-        self.field = "low"
+        self.name = "yesterday_open"
+        self.class_name = "YesterdayOpen"
+        self.table = "match_open"
+        self.field = "open"
         self.arguments = dict()
         self.current_date = None
         self.BASE_VALUE = None
         self.last_value = None
         self.today_seconds = None
-        self.diff_field = "low_diff"
-        self.pct_diff_field = "low_pct_diff"
+        self.diff_field = "open_diff"
+        self.pct_diff_field = "open_pct_diff"
         self.diff_value = None
         self.pctdiff_value = None
         self.value_name = None
@@ -58,15 +58,17 @@ class YesterdayLow:
         secs_end = str(utils.get_timestamp(base_value_date + " 23:59:59"))
 
         params = [
-            "SELECT MIN(low)",
+            "SELECT open",
             "ticker='" + self.arguments['ticker'] + "'",
             "secs>=" + secs_ini,
-            "secs<=" + secs_end
+            "secs<=" + secs_end,
+            "ORDER BY secs",
+            "LIMIT 1 OFFSET 0"
         ]
         db_data = db.select(params)
 
         try:
-            self.last_value = db_data[0]['MIN(low)']
+            self.last_value = db_data[0][self.field]
         except IndexError:
             print(self.class_name + " Error getting base value!")
             exit()
@@ -94,35 +96,42 @@ class YesterdayLow:
 
         return
 
-    def get_matches(self, row: dict, sender: mp.Pipe) -> list:
+    def get_matches(self, task_queue: mp.Queue, result_queue: mp.Queue) -> None:
         self.matches = list()
-        self.update_base_value()
-        self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        self.get_diff_formula(row)
-        self.get_pct_diff_formula(row)
+        while True:
+            self.update_base_value()
+            print("GETTING YESTERDAY_OPEN MATCHES...")
 
-        data.set_matches_values({
-            'today_seconds': self.today_seconds,
-            'arguments': self.arguments,
-            'diff_field': self.diff_field,
-            'pct_diff_field': self.pct_diff_field,
-            'table': self.table,
-            'class_name': self.class_name
-        })
+            row = task_queue.get()
+            print("ROW YO: "+str(row), flush=True)
+            self.today_seconds = utils.get_day_seconds(str(row['fecha']) + " " + str(row['hora']))
 
-        diff_matchs = data.make_diff_query(self.diff_value)
-        self.value_name = "low diff"
-        self.show_matchs(diff_matchs)
-        self.matches.extend(diff_matchs)
+            self.get_diff_formula(row)
+            self.get_pct_diff_formula(row)
 
-        pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
-        self.value_name = "low pctdiff"
-        self.show_matchs(pct_diff_matchs)
-        self.matches.extend(pct_diff_matchs)
-        sender.send(self.matches)
+            data.set_matches_values({
+                'today_seconds': self.today_seconds,
+                'arguments': self.arguments,
+                'diff_field': self.diff_field,
+                'pct_diff_field': self.pct_diff_field,
+                'table': self.table,
+                'class_name': self.class_name
+            })
 
-        return self.matches
+            diff_matchs = data.make_diff_query(self.diff_value)
+            self.value_name = "yesterday_open diff"
+            self.show_matchs(diff_matchs)
+            self.matches.extend(diff_matchs)
+
+            pct_diff_matchs = data.make_pctdiff_query(self.pctdiff_value)
+            self.value_name = "yesterday_open pctdiff"
+            self.show_matchs(pct_diff_matchs)
+            self.matches.extend(pct_diff_matchs)
+
+            result_queue.put(self.matches)
+
+            time.sleep(0.1)
 
     def show_matchs(self, matchs: list) -> None:
         if matchs is not None:
